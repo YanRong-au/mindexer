@@ -11,11 +11,6 @@ import numpy as np
 import sys
 import time
 import argparse
-import warnings
-
-# TODO: Figure out why line 210 causes this warning and how we can prevent it
-warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
-pd.options.mode.chained_assignment = None
 
 SYSTEM_PROFILE = "system.profile"
 DEFAULT_SAMPLE_DB = "mindexer_samples"
@@ -36,6 +31,7 @@ def main(
     sample_db=DEFAULT_SAMPLE_DB,
     verbose=False,
     before_and_after=False,
+    max_indexes=0,
 ):
     namespace = f"{db}.{collection}"
     mcollection = MongoCollection(uri, db, collection)
@@ -47,10 +43,7 @@ def main(
     profile_collection = database[SYSTEM_PROFILE]
 
     # TODO include aggregate commands as well
-    profile_docs = [
-        doc["command"]
-        for doc in profile_collection.find({"ns": namespace, "op": "query"})
-    ]
+    profile_docs = [doc["command"] for doc in profile_collection.find({"ns": namespace, "op": "query"})]
 
     # extract MQL queries
     workload = []
@@ -64,9 +57,7 @@ def main(
                 query.sort = tuple(doc["sort"].keys())
             if "projection" in doc:
                 # ignore projection keys with 0, specifically {_id: 0}
-                query.projection = tuple(
-                    [k for k, v in doc["projection"].items() if v == 1]
-                )
+                query.projection = tuple([k for k, v in doc["projection"].items() if v == 1])
 
             workload.append(query)
         except Exception as e:
@@ -130,19 +121,12 @@ def main(
     score_time = time.time()
 
     print("\n>> evaluating scores for index candidates\n")
-    scores = pd.DataFrame(
-        0,
-        index=range(len(workload)),
-        columns=list(candidates),
-        dtype="float"
-    )
+    scores = pd.DataFrame(0, index=range(len(workload)), columns=list(candidates), dtype="float")
 
     for nq, query in enumerate(workload):
         print(f"    query #{nq:<2}: {query}")
 
-
         for nc, candidate in enumerate(candidates):
-
             # score index for filtering
             fetch_query = query.index_intersect(candidate)
             if len(fetch_query.filter.keys()) == 0:
@@ -152,7 +136,7 @@ def main(
                 # estimate for number of documents needs to be fetched
                 est = get_estimate(fetch_query)
 
-                # estimate number of index key examined 
+                # estimate number of index key examined
                 index_key_scanned = query.index_number_key_query(candidate)
                 index_key_scanned_est = get_estimate(index_key_scanned)
 
@@ -167,30 +151,30 @@ def main(
 
                 # Calculating the index lookup cost for retrieving desired documents based on the candidate index.
                 # This cost accounts for the overhead of scanning the index to find matching keys.
-                # Note: This calculation only covers the index lookup cost. If the query is not fully covered 
-                # by the index (e.g., if some fields required by the query are not part of the index), 
-                # additional fetch operations will be required to retrieve the full documents. These fetch 
+                # Note: This calculation only covers the index lookup cost. If the query is not fully covered
+                # by the index (e.g., if some fields required by the query are not part of the index),
+                # additional fetch operations will be required to retrieve the full documents. These fetch
                 # operations incur additional costs that are not included here.
                 #
                 # The index lookup cost is calculated as follows:
-                # 
+                #
                 # 1. (IXSCAN_COST + (len(candidate) - 1) * INDEX_FIELD_COST):
-                #    - This represents the **cost per index key or entry**, considering both the base scan cost 
+                #    - This represents the **cost per index key or entry**, considering both the base scan cost
                 #      (IXSCAN_COST) and the additional cost associated with the size of the index.
                 #    - The base cost (IXSCAN_COST) reflects the overhead of scanning each index key.
-                #    - The additional cost, `(len(candidate) - 1) * INDEX_FIELD_COST`, reflects the higher storage 
+                #    - The additional cost, `(len(candidate) - 1) * INDEX_FIELD_COST`, reflects the higher storage
                 #      and processing cost for larger indexes (with more fields). The first field does not incur
                 #      additional cost, so the adjustment `(len(candidate) - 1)` is used.
                 #
                 # 2. index_key_scanned_est:
                 #    - This estimates the total number of index keys that need to be scanned for the query.
-                #    - The cost per index key (calculated above) is multiplied by this value to compute the 
+                #    - The cost per index key (calculated above) is multiplied by this value to compute the
                 #      total index lookup cost.
                 #
-                # The total index lookup cost combines these two components to reflect the overhead of using the 
+                # The total index lookup cost combines these two components to reflect the overhead of using the
                 # index for the query.
                 index_cost = (IXSCAN_COST + (len(candidate) - 1) * INDEX_FIELD_COST) * index_key_scanned_est
-                
+
                 # Add fetch cost if the query is not fully covered by the candidate index.
                 # FETCH_COST represents the cost of fetching a single document from the collection.
                 # The total fetch cost is calculated as FETCH_COST multiplied by the estimated number
@@ -207,18 +191,13 @@ def main(
 
             scores.iat[nq, nc] = benefit
 
-
     score_duration_ms = (time.time() - score_time) * 1000
     if verbose:
         print(f"   took {score_duration_ms} ms.\n")
 
     def printScoreTable(scores):
         print("score table (rows=queries, columns=index candidates)")
-        print(
-            scores.rename(
-                lambda c: list(candidates).index(c), axis="columns"
-            ).reset_index(drop=True)
-        )
+        print(scores.rename(lambda c: list(candidates).index(c), axis="columns").reset_index(drop=True))
 
     if verbose:
         printScoreTable(scores)
@@ -230,7 +209,6 @@ def main(
 
     idx_scores = scores.copy()
     for i in range(len(candidates)):
-
         # --- sum scores of all queries
         topscore = idx_scores.sum(axis=0).sort_values(ascending=False)
         idx = topscore.index[0]
@@ -243,7 +221,11 @@ def main(
         idx_scores.drop(idx, axis="columns", inplace=True)
 
         estimator_indexes.append(idx)
-        estimator_scores.append(topscore[0])
+        estimator_scores.append(topscore.iloc[0])
+
+        # check if we've reached the maximum number of indexes
+        if max_indexes > 0 and len(estimator_indexes) >= max_indexes:
+            break
 
         ### update score matrix
         # for each query (row) and all created indexes (columns)
@@ -252,9 +234,7 @@ def main(
         for qi, query in enumerate(workload):
             # scores of existing indexes that can support this query (no 0s)
             # TODO: DeprecationWarning !!
-            existing_scores = [
-                s for s in scores[estimator_indexes].iloc[qi].tolist() if s != 0
-            ]
+            existing_scores = [s for s in scores[estimator_indexes].iloc[qi].tolist() if s != 0]
             if len(existing_scores) == 0:
                 # if no existing index can support this query, the current score remains
                 continue
@@ -262,13 +242,11 @@ def main(
 
             # new score is the difference between the best index so far and this index
             columns = idx_scores.columns
-            idx_scores.loc[qi, columns] = scores.loc[qi, columns].subtract(
-                best_existing, axis=0
-            )
+            idx_scores.loc[qi, columns] = scores.loc[qi, columns].subtract(best_existing, axis=0)
 
             # since an existing index exists for this query, we can't make it worse:
             # set negative values for this row (=query) to 0.
-            idx_scores.iloc[qi].mask(idx_scores.iloc[qi] < 0, 0, inplace=True)
+            idx_scores.iloc[qi] = idx_scores.iloc[qi].mask(idx_scores.iloc[qi] < 0, 0)
 
     print(f"\n>> dropping sample collection {sample_db}.{collection}\n")
     estimator.drop_sample()
@@ -290,13 +268,13 @@ def main(
         yes = {"yes", "y", "ye", ""}
 
         choice = input().lower()
-        if not choice in yes:
+        if choice not in yes:
             sys.exit()
 
         # run before creating (additional) indexes
         print("\n>> evaluating workload before creating new indexes\n")
         before_time = mcollection.execute_workload(workload)
-        print(f"\n    workload took {before_time / 1000.:.2f} sec.")
+        print(f"\n    workload took {before_time / 1000.0:.2f} sec.")
 
         # create recommended indexes
         print("\n>> creating indexes\n")
@@ -308,14 +286,12 @@ def main(
         # run with newly created indexes
         print("\n>> evaluating workload after creating new indexes\n")
         after_time = mcollection.execute_workload(workload)
-        print(f"\n    workload took {after_time / 1000.:.2f} sec to execute.")
+        print(f"\n    workload took {after_time / 1000.0:.2f} sec to execute.")
 
 
 if __name__ == "__main__":
     # Instantiate the CLI argument parser
-    parser = argparse.ArgumentParser(
-        description="Experimental Index Recommendation Tool for MongoDB."
-    )
+    parser = argparse.ArgumentParser(description="Experimental Index Recommendation Tool for MongoDB.")
 
     # URI, database and collection arguments
     parser.add_argument(
@@ -325,9 +301,7 @@ if __name__ == "__main__":
         help="mongodb uri connection string",
         required=True,
     )
-    parser.add_argument(
-        "-d", "--db", metavar="<db>", type=str, help="database name", required=True
-    )
+    parser.add_argument("-d", "--db", metavar="<db>", type=str, help="database name", required=True)
     parser.add_argument(
         "-c",
         "--collection",
@@ -358,6 +332,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output")
+
+    parser.add_argument(
+        "--max-indexes",
+        type=int,
+        default=0,
+        metavar="<n>",
+        help="maximum number of indexes to suggest (default=0, unlimited)",
+    )
 
     args = parser.parse_args()
     main(**vars(args))
