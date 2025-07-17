@@ -1,0 +1,18 @@
+# metadata
+name: mindexer-testing
+description: Testing experiment harness for mindexer experiments
+tags: development
+
+# database and workload config
+uri: mongodb://localhost:27017
+db: ember2018
+collection: ember_train
+slowms: 0                 # profiling threshold in milliseconds, 0 means all queries are profiled
+workload: test            # one of ember, linkbench, test
+
+# mindexer config
+mindexer:
+  sample_ratio: 0.01
+  max_indexes: 0
+  verbose: true
+
