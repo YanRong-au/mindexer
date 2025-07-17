@@ -5,14 +5,38 @@ tags: development
 
 # database and workload config
 uri: mongodb://localhost:27017
-db: ember2018
-collection: ember_train
 slowms: 0                 # profiling threshold in milliseconds, 0 means all queries are profiled
-workload: test            # one of ember, linkbench, test
+workload: test            # one of "ember", "linkbench" or "test", defined in workloads.py
+
+
+# workload-specific parameters
+workload:
+  # ember evaluation parameters
+  ember:
+    foo: 1
+    bar: false
+
+  # linkbench evaluation parameters (example values)
+  linkbench:
+    num_queries: 1000
+    num_writes: 1000
+    num_readers: 10
+    num_writers: 10
+
+  # test evaluation parameters (example values)
+  test:
+    foo: "test"
+    bar: 42
+
 
 # mindexer config
 mindexer:
   sample_ratio: 0.01
   max_indexes: 0
   verbose: true
+
+# evaluation parameters
+eval:
+  num_runs: 5
+  discard_best_worst: false
 
