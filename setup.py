@@ -19,6 +19,6 @@ setup(
     license="MIT",
     packages=find_packages(),
     scripts=["bin/mindexer"],
-    install_requires=["numpy==2.2.6", "pandas==2.2.3", "pymongo==4.13.2", "yanex==0.3.0"],
+    install_requires=["numpy==2.2.6", "pandas==2.2.3", "pymongo==4.13.2", "yanex==0.4.0"],
     zip_safe=False,
 )

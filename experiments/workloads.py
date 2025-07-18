@@ -70,7 +70,7 @@ class TestWorkload(BaseWorkload):
     def __init__(self):
         super().__init__()
         self.db_name = "ember2018"
-        self.collection_name = "ember_train"
+        self.collection_name = "ember_test"
 
     def setup_hook(self, client: MongoClient):
         pass
@@ -86,18 +86,16 @@ class TestWorkload(BaseWorkload):
         sort = {"section.sections.entropy": -1}
 
         # Execute the query
-        print(f"Executing query Q1: find={query}, projection={projection}, sort={sort}")
         results = collection.find(query, projection).sort(sort).comment("Q1").to_list()
-        print(f"Query Q1 returned {len(results)} results.")
+        print(f"Query Q1: find={query}, projection={projection}, sort={sort}, returned {len(results)} results.")
 
         # Example query 2: Find documents with subsystem "WINDOWS_GUI" and entropy greater than 6.0
         query = {"appeared": {"$gte": "2018-10"}, "general.size": {"$gt": 2000000}, "general.has_signature": 1}
         projection = {"appeared": 1, "general.size": 1, "general.has_signature": 1, "header.coff.timestamp": 1}
 
         # Execute the query
-        print(f"Executing query Q2: find={query}, projection={projection}")
         results = collection.find(query, projection).comment("Q2").to_list()
-        print(f"Query Q2 returned {len(results)} results.")
+        print(f"Query Q2: find={query}, projection={projection}, returned {len(results)} results.")
 
     def cleanup_hook(self, client: MongoClient):
         pass

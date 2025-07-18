@@ -1,5 +1,5 @@
 import yanex
-from yanex.utils.exceptions import ValidationError
+from yanex.utils.exceptions import ValidationError, ExperimentError
 from pymongo import MongoClient
 import json
 import ast
@@ -110,20 +110,38 @@ def run_mindexer(uri: str, workload: BaseWorkload) -> list[dict]:
     return recommended_indexes
 
 
-def run_eval(client: MongoClient, workload: BaseWorkload, indexes: list):
-    """Prepare workload evaluation"""
-
+def drop_indexes(client: MongoClient, workload: BaseWorkload):
+    """Drop all indexes for the specified workload collection."""
     db = client[workload.db_name]
     collection = db[workload.collection_name]
 
-    # Drop existing indexes
-    print(f"Dropping existing indexes for {workload.db_name}.{workload.collection_name}...")
+    # Drop all indexes except the default _id index
     collection.drop_indexes()
+    print(f"Dropped all indexes for {workload.db_name}.{workload.collection_name}.")
+
+
+def create_indexes(client: MongoClient, workload: BaseWorkload, indexes: list[dict]):
+    """Create indexes for the specified workload collection."""
+    db = client[workload.db_name]
+    collection = db[workload.collection_name]
 
     # Create new indexes
     for index in indexes:
-        print(f"Creating index: {index}")
-        collection.create_index(index)
+        try:
+            if isinstance(index, dict):
+                # Convert dict to list of (field, direction) tuples
+                index_spec = [(field, direction) for field, direction in index.items()]
+            else:
+                index_spec = index
+            print(f"Creating index: {index_spec}")
+            collection.create_index(index_spec)
+        except Exception as e:
+            print(f"Failed to create index {index}: {e}")
+            raise
+
+
+def run_workload(client: MongoClient, workload: BaseWorkload) -> float:
+    """Execute workload with given indexes and return execution time."""
 
     # Execute the workload and return time taken
     print(f"Executing workload {workload.db_name}.{workload.collection_name}")
@@ -131,7 +149,10 @@ def run_eval(client: MongoClient, workload: BaseWorkload, indexes: list):
     start_time = time.perf_counter()
     workload.execute_workload(client)
     end_time = time.perf_counter()
-    return end_time - start_time
+
+    execution_time = end_time - start_time
+    print(f"Workload execution time: {execution_time:.3f} seconds")
+    return execution_time
 
 
 def main():
@@ -139,17 +160,20 @@ def main():
     uri = yanex.get_param("uri", "mongodb://localhost:27017")
     workload_name = yanex.get_param("workload", "test")
     slowms = yanex.get_param("slowms", 100)
-    num_runs = yanex.get_param("num_runs", 1)
-    discard_best_worst = yanex.get_param("discard_best_worst", False)
+    num_runs = yanex.get_param("eval.num_runs", 1)
+    discard_best_worst = yanex.get_param("eval.discard_best_worst", False)
 
-    # validate and load workload
+    # validate parameters
+    if num_runs <= 0:
+        raise ValidationError("num_runs must be positive")
     if not workload_name:
         raise ValidationError("Workload configuration is missing.")
-
     try:
         workload = get_workload(workload_name)
     except ValueError as e:
         raise ValidationError(str(e))
+
+    # --- Workload Profiling Phase ---
 
     # connect to MongoDB and prepare it for workload execution
     client = MongoClient(uri)
@@ -163,24 +187,54 @@ def main():
     # disable profiling after workload execution
     disable_profiling(client, workload)
 
+    # --- Index Recommendation Phase ---
+
     # run mindexer evaluation
     recommended_indexes = run_mindexer(uri, workload)
+
+    # --- Evaluation Phase ---
+
+    # drop existing indexes before evaluation
+    print("\n=== Evaluating workload without indexes ===\n")
+    drop_indexes(client, workload)
+
+    # perform warmup run
+    print("Performing warmup run...")
+    run_workload(client, workload)
 
     # evaluate workload without indexes
     exec_times_no_indexes = []
     for n in range(num_runs):
-        print(f"Run {n + 1}/{num_runs} without indexes")
-        exec_time = run_eval(client, workload, [])
-        yanex.log_results({"exec_time": exec_time, "index": False}, step=n)
-        exec_times_no_indexes.append(exec_time)
+        print(f"\nRun {n + 1}/{num_runs} without indexes")
+        try:
+            exec_time = run_workload(client, workload)
+            yanex.log_metrics({"exec_time_no_indexes": exec_time}, step=n)
+            exec_times_no_indexes.append(exec_time)
+        except Exception as e:
+            print(f"Run {n + 1} failed: {e}")
+            raise
+
+    # create recommended indexes
+    print("\n=== Evaluating workload with recommended indexes ===\n")
+    if not recommended_indexes:
+        raise ExperimentError("No recommended indexes found from mindexer.")
+    create_indexes(client, workload, recommended_indexes)
+
+    # perform warmup run
+    print("Performing warmup run...")
+    run_workload(client, workload)
 
     # evaluate workload with recommended indexes
     exec_times_with_indexes = []
     for n in range(num_runs):
-        print(f"Run {n + 1}/{num_runs} with indexes: {recommended_indexes}")
-        exec_time = run_eval(client, workload, recommended_indexes)
-        yanex.log_results({"exec_time": exec_time, "index": True}, step=n)
-        exec_times_with_indexes.append(exec_time)
+        print(f"\nRun {n + 1}/{num_runs} with indexes")
+        try:
+            exec_time = run_workload(client, workload)
+            yanex.log_metrics({"exec_time_with_indexes": exec_time}, step=n)
+            exec_times_with_indexes.append(exec_time)
+        except Exception as e:
+            print(f"Run {n + 1} failed: {e}")
+            raise
 
     # calculate statistics
     if discard_best_worst:
@@ -199,7 +253,7 @@ def main():
     stddev_with_indexes = np.std(exec_times_with_indexes)
 
     # log final results
-    yanex.log_results(
+    yanex.log_metrics(
         {
             "mean_exec_time_no_indexes": mean_no_indexes,
             "stddev_exec_time_no_indexes": stddev_no_indexes,
