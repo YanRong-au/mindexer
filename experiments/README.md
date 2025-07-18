@@ -32,12 +32,30 @@ You should now be able to run `yanex` from the CLI (e.g. `yanex list`, which wou
 
 ### Datasets and Workloads
 
-(TODO, currently assumes Ember dataset is already set up in local MongoDB instance).
 
-We need to set up the datasets and workloads for the experiments. The `workloads.py` file contains classes that define the workloads to be used in the experiments.
+#### Ember Dataset
+
+The `ember` and `test` workloads are based on the Ember dataset. It can be downloaded from our OneDrive folder, together with a `README.md` file that contains instructions on how to import the data into MongoDB. Use `ember2018` as the database name and `ember_train` / `ember_test` as the collection names.
 
 
-## Running the Experiments
+#### Linkbench Dataset
+
+TODO
+
+#### Custom Datasets and Workloads
+
+You can also define your own datasets and workloads. To do so, create a new class in `workloads.py` that inherits from `BaseWorkload` 
+with the correct database and collection names.
+
+Implement the `execute_workload()` method, which can either execute queries directly using the PyMongo driver, or call 
+a bash script that runs the workload using [`yanex.execute_bash_script()`](https://github.com/rueckstiess/yanex/blob/main/docs/python-api.md#yanexexecute_bash_scriptcommand-timeoutnone-raise_on_errorfalse-stream_outputtrue-working_dirnone). 
+
+Optional `setup_hook()` and `cleanup_hook()` methods can be implemented to set up the database and clean up after the workload execution.
+
+Give your workload a unique name and add it to `get_workload()`. 
+
+
+## Running Experiments
 
 To run the experiments, use the following command:
 
@@ -45,8 +63,40 @@ To run the experiments, use the following command:
 yanex run evaluate.py
 ```
 
-This will execute the `evaluate.py` script, using the
-parameters in the `config.yaml` file, The results will be stored in the `.yanex/experiments/<id>` directory.
+This will execute the `evaluate.py` script, using the parameters in the `config.yaml` file. 
+The results will be stored in the `.yanex/experiments/<id>` directory, see stdout output after the
+experiment has finished.
+
+In the experiment directory, you will find a number of files. See [Experiment Directory Structure](https://github.com/rueckstiess/yanex/blob/main/docs/experiment-structure.md) in the Yanex documentation for details on the files and their contents.
+
+Individual parameters can be overridden by passing them as command line arguments, e.g.:
+
+```bash
+yanex run evaluate.py --param workload=weather --param "mindexer.sample_ratio=0.05"
+```
 
 
+## Viewing Results
+
+To view the results of the experiments, you can use the `yanex` CLI commands.
+
+To see a list of all experiments, run:
+
+```bash
+yanex list
+```
+
+
+To see details for a specific experiment, use:
+
+```bash
+yanex show <experiment_id>
+```
+
+To compare parameters and metrics of different experiments in an interactive table, you can use:
+```bash
+yanex compare [FILTERS]
+```
+
+For all available commands, check the [Yanex documentation](https://github.com/rueckstiess/yanex/blob/main/docs/README.md).
 
