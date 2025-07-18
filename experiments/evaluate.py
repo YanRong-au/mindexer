@@ -22,6 +22,7 @@ def main():
     num_runs = yanex.get_param("eval.num_runs", 1)
     discard_best_worst = yanex.get_param("eval.discard_best_worst", False)
     workload_params = yanex.get_param(f"workload_params.{workload_name}", "{}")
+    recommender = yanex.get_param("recommender", "mindexer")
 
     # validate parameters
     if num_runs <= 0:
@@ -32,6 +33,11 @@ def main():
         workload = get_workload(workload_name, workload_params)
     except ValueError as e:
         raise ValidationError(str(e))
+
+    if recommender not in ["mindexer", "atlas"]:
+        raise ValidationError(f"Unknown recommender: {recommender}")
+    if recommender == "atlas" and not uri.startswith("mongodb+srv://"):
+        raise ValidationError("Atlas recommender requires a valid Atlas connection string.")
 
     # --- Workload Profiling Phase ---
 
@@ -49,8 +55,12 @@ def main():
 
     # --- Index Recommendation Phase ---
 
-    # run mindexer evaluation
-    recommended_indexes = run_mindexer(uri, workload)
+    if recommender == "mindexer":
+        recommended_indexes = run_mindexer(uri, workload)
+
+    elif recommender == "atlas":
+        # TODO implement Atlas Performance Advisor integration
+        raise NotImplementedError("Atlas recommender is not implemented yet.")
 
     # --- Evaluation Phase ---
 
