@@ -57,7 +57,7 @@ Give your workload a unique name and add it to `get_workload()`.
 
 ## Running Experiments
 
-To run the experiments, use the following command:
+To run the experiments, use the following command from the `experiments` directory:
 
 ```bash
 yanex run evaluate.py
