@@ -1,4 +1,4 @@
-# yanex metadata
+# yanex experiment metadata
 yanex:
   name: mindexer-testing
   description: Testing experiment harness for mindexer experiments
@@ -6,29 +6,28 @@ yanex:
   ignore_dirty: true
 
 
-# database and workload config
+# database,  workload and recommender config
 uri: mongodb://localhost:27017
 slowms: 0                 # profiling threshold in milliseconds, 0 means all queries are profiled
 workload: test            # one of "ember", "linkbench" or "test", defined in workloads.py
+recommender: mindexer     # one of "mindexer" or "atlas", defines the index recommender to use
+
 
 # workload-specific parameters
+workload_params:
+  ember:          # ember parameters (example values)
+    foo: 1
+    bar: false
 
-# ember evaluation parameters (example values)
-ember:
-  foo: 1
-  bar: false
+  linkbench:      # linkbench parameters (example values)
+    num_queries: 1000
+    num_writes: 1000
+    num_readers: 10
+    num_writers: 10
 
-# linkbench evaluation parameters (example values)
-linkbench:
-  num_queries: 1000
-  num_writes: 1000
-  num_readers: 10
-  num_writers: 10
-
-# test evaluation parameters (example values)
-test:
-  foo: "test"
-  bar: 42
+  test:           # test parameters (example values)
+    foo: "test"
+    bar: 42
 
 
 # mindexer config

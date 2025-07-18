@@ -21,6 +21,7 @@ def main():
     slowms = yanex.get_param("slowms", 100)
     num_runs = yanex.get_param("eval.num_runs", 1)
     discard_best_worst = yanex.get_param("eval.discard_best_worst", False)
+    workload_params = yanex.get_param(f"workload_params.{workload_name}", "{}")
 
     # validate parameters
     if num_runs <= 0:
@@ -28,7 +29,7 @@ def main():
     if not workload_name:
         raise ValidationError("Workload configuration is missing.")
     try:
-        workload = get_workload(workload_name)
+        workload = get_workload(workload_name, workload_params)
     except ValueError as e:
         raise ValidationError(str(e))
 

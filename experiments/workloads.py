@@ -5,9 +5,10 @@ from pymongo import MongoClient
 class BaseWorkload(ABC):
     """Base class for all workloads."""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.db_name = None
         self.collection_name = None
+        self.params = kwargs
 
     @abstractmethod
     def setup_hook(self, client: MongoClient):
@@ -28,8 +29,8 @@ class BaseWorkload(ABC):
 class EmberWorkload(BaseWorkload):
     """Workload for Ember dataset."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.db_name = "ember2018"
         self.collection_name = "ember_train"
 
@@ -47,8 +48,8 @@ class EmberWorkload(BaseWorkload):
 class LinkbenchWorkload(BaseWorkload):
     """Workload for Linkbench dataset."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.db_name = "linkbench"
         self.collection_name = "linktable"
 
@@ -67,12 +68,13 @@ class LinkbenchWorkload(BaseWorkload):
 class TestWorkload(BaseWorkload):
     """Test workload with example queries."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.db_name = "ember2018"
         self.collection_name = "ember_test"
 
     def setup_hook(self, client: MongoClient):
+        print(f"Setting up test workload with parameters: {self.params}")
         pass
 
     def execute_workload(self, client: MongoClient):
@@ -101,11 +103,12 @@ class TestWorkload(BaseWorkload):
         pass
 
 
-def get_workload(workload_name: str) -> BaseWorkload:
+def get_workload(workload_name: str, params: dict = {}) -> BaseWorkload:
     """Factory function to get workload instance by name."""
     workloads = {"ember": EmberWorkload, "linkbench": LinkbenchWorkload, "test": TestWorkload}
 
     if workload_name not in workloads:
         raise ValueError(f"Unknown workload: {workload_name}. Available workloads: {list(workloads.keys())}")
 
-    return workloads[workload_name]()
+    # Pass parameters to the workload constructor
+    return workloads[workload_name](**params)
