@@ -38,6 +38,6 @@ mindexer:
 
 # evaluation parameters
 eval:
-  num_runs: 5
+  num_runs: 3
   discard_best_worst: false
 
